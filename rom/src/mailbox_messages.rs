@@ -39,6 +39,19 @@ pub trait MailboxResponse: IntoBytes + FromBytes + Immutable + KnownLayout {}
 
 pub trait MailboxRequest: IntoBytes + FromBytes + Immutable + KnownLayout {
     const COMMAND_ID: CommandId;
+    type Response: MailboxResponse;
+}
+
+#[derive(Clone, Copy, Debug, Default, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct NoResponse {
+    _reserved: [u8; 0],
+}
+
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct OverrideChallenge {
+    pub challenge: [u8; 48],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
@@ -80,6 +93,7 @@ pub struct OverrideChallengeRequest {
 
 impl MailboxRequest for OverrideChallengeRequest {
     const COMMAND_ID: CommandId = CommandId::DOT_UNLOCK_CHALLENGE;
+    type Response = OverrideChallenge;
 }
 
 #[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
@@ -96,5 +110,6 @@ pub struct OverrideResponse {
 
 impl MailboxRequest for OverrideResponse {
     const COMMAND_ID: CommandId = CommandId::DOT_OVERRIDE;
+    type Response = NoResponse;
 }
 

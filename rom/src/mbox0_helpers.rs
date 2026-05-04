@@ -19,7 +19,7 @@ use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 pub use crate::mailbox_messages::CommandId;
-use crate::mailbox_messages::MailboxRequest;
+use crate::mailbox_messages::{MailboxRequest, MailboxResponse};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mbox0Error {
@@ -112,6 +112,17 @@ impl Mbox0Session {
         self.status = SessionStatus::DataReady;
     }
 
+    pub fn complete_with_response<R>(self, response: &R)
+    where
+        R: MailboxResponse,
+    {
+        if core::mem::size_of::<R>() == 0 {
+            self.success();
+        } else {
+            self.send_mbox0_response(<R as zerocopy::IntoBytes>::as_bytes(response));
+        }
+    }
+
     pub fn success(mut self) {
         self.status = SessionStatus::CmdComplete;
     }
@@ -184,5 +195,19 @@ impl Mbox0Helpers {
         }
 
         Ok(session)
+    }
+
+    pub fn wait_and_handle<T, F>(&self, handler: F) -> Result<(), Mbox0Error>
+    where
+        T: MailboxRequest,
+        F: FnOnce(&T) -> Result<T::Response, Mbox0Error>,
+    {
+        let session = self.wait_for_valid_request::<T>()?;
+        let request = session
+            .sram_as_request::<T>()
+            .ok_or(Mbox0Error::DlenTooSmall)?;
+        let response = handler(request)?;
+        session.complete_with_response(&response);
+        Ok(())
     }
 }

@@ -25,7 +25,7 @@ use caliptra_mcu_error::{McuError, McuResult};
 
 use crate::{
     EccP384PublicKey, RecoveryTransport, MLDSA87_PUB_KEY_SIZE_DWORDS, MLDSA87_SIGNATURE_SIZE_DWORDS,
-    mailbox_messages::{OverrideChallengeRequest, OverrideResponse},
+    mailbox_messages::{NoResponse, OverrideChallenge, OverrideChallengeRequest, OverrideResponse},
     mbox0_helpers::{Mbox0Helpers, Mbox0Session},
 };
 
@@ -88,15 +88,18 @@ impl<'a> RecoveryTransport for Mbox0RecoveryTransport<'a> {
 
     fn send_challenge(&self, challenge: &[u8; 48]) -> McuResult<()> {
         caliptra_mcu_romtime::println!("[dot-override] Sending challenge via mbox0");
-        let mut session = self.active_session.borrow_mut().take().ok_or(
+        let session = self.active_session.borrow_mut().take().ok_or(
             McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED,
         )?;
-        session.send_mbox0_response(challenge);
+        let response = OverrideChallenge {
+            challenge: *challenge,
+        };
+        session.complete_with_response(&response);
         Ok(())
     }
 
     fn receive_override_response(&self) -> McuResult<crate::OverrideChallengeResponse<'_>> {
-        let mut session = self
+        let session = self
             .helpers
             .wait_for_valid_request::<OverrideResponse>()
             .map_err(|_| McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED)?;
@@ -114,7 +117,7 @@ impl<'a> RecoveryTransport for Mbox0RecoveryTransport<'a> {
         let mldsa_signature = &resp.mldsa_signature;
 
         caliptra_mcu_romtime::println!("[dot-override] Override response received via mbox0");
-        session.success();
+        session.complete_with_response(&NoResponse::default());
 
         Ok(crate::OverrideChallengeResponse {
             ecc_pub_key,
