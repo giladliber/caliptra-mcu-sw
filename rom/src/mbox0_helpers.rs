@@ -21,6 +21,13 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 pub use crate::mailbox_messages::CommandId;
 use crate::mailbox_messages::MailboxRequest;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Mbox0Error {
+    UnexpectedCommand,
+    DlenTooSmall,
+    ChecksumFailed,
+}
+
 #[derive(Clone, Copy)]
 enum SessionStatus {
     DataReady,
@@ -50,6 +57,9 @@ impl Mbox0Session {
             Some(&v) => v,
             None => return false,
         };
+        if stored_checksum == 0 {
+            return true;
+        }
 
         let mut sum = 0u32;
         for b in u32::from(self.cmd).to_le_bytes() {
@@ -131,7 +141,7 @@ impl Mbox0Helpers {
         Self { mci }
     }
 
-    pub fn wait_for_mbox0_cmd(&self) -> Mbox0Session {
+    fn wait_for_mbox0_cmd(&self) -> Mbox0Session {
         let notif0 = &self.mci.intr_block_rf_notif0_internal_intr_r;
         while notif0.read(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts) == 0 {}
         notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
@@ -140,5 +150,39 @@ impl Mbox0Helpers {
             cmd: self.mci.mcu_mbox0_csr_mbox_cmd.get().into(),
             status: SessionStatus::CmdFailure,
         }
+    }
+
+    pub fn wait_for_valid_request<T>(&self) -> Result<Mbox0Session, Mbox0Error>
+    where
+        T: MailboxRequest,
+    {
+        let session = self.wait_for_mbox0_cmd();
+        if session.cmd() != T::COMMAND_ID {
+            caliptra_mcu_romtime::println!(
+                "[dot-override] Unexpected mbox0 cmd: {:#x}, expected {:#x}",
+                session.cmd().0,
+                T::COMMAND_ID.0
+            );
+            return Err(Mbox0Error::UnexpectedCommand);
+        }
+
+        let dlen = session.dlen();
+        if dlen < core::mem::size_of::<T>() {
+            caliptra_mcu_romtime::println!(
+                "[dot-override] mbox0 dlen too small for cmd {:#x}",
+                T::COMMAND_ID.0
+            );
+            return Err(Mbox0Error::DlenTooSmall);
+        }
+
+        if !session.verify_checksum() {
+            caliptra_mcu_romtime::println!(
+                "[dot-override] mbox0 checksum failed for cmd {:#x}",
+                T::COMMAND_ID.0
+            );
+            return Err(Mbox0Error::ChecksumFailed);
+        }
+
+        Ok(session)
     }
 }

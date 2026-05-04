@@ -25,12 +25,9 @@ use caliptra_mcu_error::{McuError, McuResult};
 
 use crate::{
     EccP384PublicKey, RecoveryTransport, MLDSA87_PUB_KEY_SIZE_DWORDS, MLDSA87_SIGNATURE_SIZE_DWORDS,
-    mailbox_messages::{MailboxRequest, OverrideChallengeRequest, OverrideResponse},
+    mailbox_messages::{OverrideChallengeRequest, OverrideResponse},
     mbox0_helpers::{Mbox0Helpers, Mbox0Session},
 };
-use caliptra_mcu_registers_generated::mci;
-use caliptra_mcu_romtime::StaticRef;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// Challenge type field values for DOT_UNLOCK_CHALLENGE.
 pub const CHALLENGE_TYPE_UNLOCK: u32 = 0x01;
@@ -53,24 +50,10 @@ impl<'a> Mbox0RecoveryTransport<'a> {
 
 impl<'a> RecoveryTransport for Mbox0RecoveryTransport<'a> {
     fn wait_for_override_request(&self) -> McuResult<crate::OverrideRequest<'_>> {
-        let session = self.helpers.wait_for_mbox0_cmd();
-        if session.cmd() != OverrideChallengeRequest::COMMAND_ID {
-            caliptra_mcu_romtime::println!(
-                "[dot-override] Unexpected mbox0 cmd: {:#x}, expected DOT_UNLOCK_CHALLENGE",
-                session.cmd().0
-            );
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
-
-        let dlen = session.dlen();
-        if dlen < core::mem::size_of::<OverrideChallengeRequest>() {
-            caliptra_mcu_romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE dlen too small");
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
-        if !session.verify_checksum() {
-            caliptra_mcu_romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE checksum failed");
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
+        let session = self
+            .helpers
+            .wait_for_valid_request::<OverrideChallengeRequest>()
+            .map_err(|_| McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED)?;
 
         let req = session
             .sram_as_request::<OverrideChallengeRequest>()
@@ -113,24 +96,10 @@ impl<'a> RecoveryTransport for Mbox0RecoveryTransport<'a> {
     }
 
     fn receive_override_response(&self) -> McuResult<crate::OverrideChallengeResponse<'_>> {
-        let mut session = self.helpers.wait_for_mbox0_cmd();
-        if session.cmd() != OverrideResponse::COMMAND_ID {
-            caliptra_mcu_romtime::println!(
-                "[dot-override] Unexpected mbox0 cmd: {:#x}, expected DOT_OVERRIDE",
-                session.cmd().0
-            );
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
-
-        let dlen = session.dlen();
-        if dlen < core::mem::size_of::<OverrideResponse>() {
-            caliptra_mcu_romtime::println!("[dot-override] DOT_OVERRIDE dlen too small");
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
-        if !session.verify_checksum() {
-            caliptra_mcu_romtime::println!("[dot-override] DOT_OVERRIDE checksum failed");
-            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
-        }
+        let mut session = self
+            .helpers
+            .wait_for_valid_request::<OverrideResponse>()
+            .map_err(|_| McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED)?;
 
         let resp = session
             .sram_as_request::<OverrideResponse>()
