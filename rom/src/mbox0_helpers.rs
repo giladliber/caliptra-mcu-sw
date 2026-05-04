@@ -18,27 +18,8 @@ Abstract:
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use core::convert::From;
-
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct CommandId(pub u32);
-
-impl CommandId {
-    pub const DOT_UNLOCK_CHALLENGE: Self = Self(0x444F_5457);
-    pub const DOT_OVERRIDE: Self = Self(0x444F_5458);
-}
-
-impl From<u32> for CommandId {
-    fn from(value: u32) -> Self {
-        Self(value)
-    }
-}
-
-impl From<CommandId> for u32 {
-    fn from(value: CommandId) -> Self {
-        value.0
-    }
-}
+pub use crate::mailbox_messages::CommandId;
+use crate::mailbox_messages::MailboxRequest;
 
 #[derive(Clone, Copy)]
 enum SessionStatus {
@@ -88,10 +69,16 @@ impl Mbox0Session {
         stored_checksum == 0u32.wrapping_sub(sum)
     }
 
-    /// # Safety
-    /// Caller must ensure the SRAM contains a valid `T` at offset 0.
-    pub unsafe fn sram_as<T>(&self) -> &'static T {
-        &*(self.mci.mcu_mbox0_csr_mbox_sram.as_ptr() as *const T)
+    pub fn sram_as_request<T>(&self) -> Option<&T>
+    where
+        T: MailboxRequest,
+    {
+        let sram = &self.mci.mcu_mbox0_csr_mbox_sram;
+        let max_len = sram.len().saturating_mul(core::mem::size_of::<u32>());
+        let dlen = self.dlen().min(max_len);
+        let bytes = unsafe { core::slice::from_raw_parts(sram.as_ptr() as *const u8, dlen) };
+        let (request, _) = T::ref_from_prefix(bytes).ok()?;
+        Some(request)
     }
 
     pub fn send_mbox0_response(mut self, data: &[u8]) {
