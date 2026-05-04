@@ -597,6 +597,12 @@ pub trait RecoveryTransport {
 
     /// Receive the signed challenge response from the BMC.
     fn receive_override_response(&self) -> McuResult<OverrideChallengeResponse<'_>>;
+
+    /// Abort any in-progress override command session.
+    ///
+    /// Default implementation is a no-op for transports that do not keep
+    /// command state between calls.
+    fn abort_pending_session(&self) {}
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,6 +1043,7 @@ pub fn dot_override_challenge_flow(
     let ecc_key_u32 = ecc_key_as_u32_slice(&request.ecc_pub_key);
     let computed_hash = cm_sha384(&mut env.soc_manager, &[ecc_key_u32, request.mldsa_pub_key])
         .inspect_err(|_e| {
+            transport.abort_pending_session();
             env.mci
                 .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         })?;
@@ -1044,6 +1051,7 @@ pub fn dot_override_challenge_flow(
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
         caliptra_mcu_romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
+        transport.abort_pending_session();
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
@@ -1051,6 +1059,7 @@ pub fn dot_override_challenge_flow(
 
     // Generate and send challenge
     let challenge = cm_random_generate(&mut env.soc_manager).inspect_err(|_e| {
+        transport.abort_pending_session();
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
