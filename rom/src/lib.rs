@@ -16,6 +16,7 @@ Abstract:
 
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
+pub mod mbox0_helpers;
 mod dot_override;
 pub use dot_override::*;
 pub mod flash;

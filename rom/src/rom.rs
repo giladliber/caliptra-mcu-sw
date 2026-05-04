@@ -814,11 +814,23 @@ pub struct RomParameters<'a> {
 }
 
 #[inline(always)]
-pub fn rom_start(params: RomParameters) {
+pub fn rom_start(mut params: RomParameters) {
     caliptra_mcu_romtime::println!("[mcu-rom] Hello from ROM");
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();
+
+    // Set up DOT recovery transport if test-dot-recovery feature is enabled
+    #[cfg(feature = "test-dot-recovery")]
+    {
+        static mut RECOVERY_TRANSPORT: core::mem::MaybeUninit<
+            crate::Mbox0RecoveryTransport,
+        > = core::mem::MaybeUninit::uninit();
+        let recovery_transport = unsafe {
+            RECOVERY_TRANSPORT.write(crate::Mbox0RecoveryTransport::new(&env.mbox0_helpers))
+        };
+        params.dot_recovery_transport = Some(&*recovery_transport);
+    }
 
     // Create local references for printing
     let mci = &env.mci;

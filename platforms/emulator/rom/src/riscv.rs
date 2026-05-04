@@ -313,8 +313,8 @@ pub extern "C" fn rom_entry() -> ! {
             blob
         };
 
-        // Store recovery handler and transport in statics so the
-        // DotLockedRecoveryHandler wrappers can reference them with
+        // Store recovery handler in static so the
+        // DotLockedRecoveryHandler wrappers can reference it with
         // 'static lifetime.
         static mut RECOVERY_HANDLER: core::mem::MaybeUninit<TestDotRecoveryHandler> =
             core::mem::MaybeUninit::uninit();
@@ -322,23 +322,6 @@ pub extern "C" fn rom_entry() -> ! {
             RECOVERY_HANDLER.write(TestDotRecoveryHandler {
                 blob: recovery_backup_blob,
             })
-        };
-
-        let mci_base: caliptra_mcu_romtime::StaticRef<
-            caliptra_mcu_registers_generated::mci::regs::Mci,
-        > = unsafe {
-            caliptra_mcu_romtime::StaticRef::new(
-                MCU_MEMORY_MAP.mci_offset
-                    as *const caliptra_mcu_registers_generated::mci::regs::Mci,
-            )
-        };
-        static mut RECOVERY_TRANSPORT: core::mem::MaybeUninit<
-            caliptra_mcu_rom_common::Mbox0RecoveryTransport,
-        > = core::mem::MaybeUninit::uninit();
-        let recovery_transport = unsafe {
-            RECOVERY_TRANSPORT.write(caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(
-                mci_base,
-            ))
         };
 
         let hooks = LoggingRomHooks;
@@ -353,11 +336,6 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
                 Some(&*recovery_handler)
-            } else {
-                None
-            },
-            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
-                Some(&*recovery_transport)
             } else {
                 None
             },
@@ -381,30 +359,14 @@ pub extern "C" fn rom_entry() -> ! {
                         recovery_handler: &*recovery_handler,
                     })
                 };
-                static mut OVERRIDE_HANDLER: core::mem::MaybeUninit<
-                    caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
-                > = core::mem::MaybeUninit::uninit();
-                let override_h = unsafe {
-                    OVERRIDE_HANDLER.write(
-                        caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler {
-                            transport: &*recovery_transport,
-                            wdt_timeout: 0,
-                        },
-                    )
-                };
                 static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
-                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
                 > = core::mem::MaybeUninit::uninit();
                 unsafe {
                     HANDLER_ENTRIES
                         .write([
                             caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                                 handler: blob_h,
-                                policy:
-                                    caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
-                            },
-                            caliptra_mcu_rom_common::DotLockedRecoveryEntry {
-                                handler: override_h,
                                 policy:
                                     caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
                             },

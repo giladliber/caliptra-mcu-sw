@@ -13,6 +13,7 @@ Abstract:
 --*/
 
 use crate::Soc;
+use crate::mbox0_helpers::Mbox0Helpers;
 use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
 use caliptra_mcu_romtime::{CaliptraSoC, Lifecycle, Mci, Otp, StaticRef};
 use core::ptr::addr_of;
@@ -29,6 +30,7 @@ pub struct RomEnv {
     pub i3c1_base: StaticRef<i3c::regs::I3c>,
     pub soc_manager: CaliptraSoC,
     pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
+    pub mbox0_helpers: Mbox0Helpers,
 }
 
 impl RomEnv {
@@ -67,6 +69,7 @@ impl RomEnv {
             let otp = Otp::new(otp_base);
             let i3c = crate::i3c::I3c::new(i3c_base);
             let i3c1 = crate::i3c::I3c::new(i3c1_base);
+            let mbox0_helpers = Mbox0Helpers::new(mci_base);
 
             Self {
                 mci,
@@ -79,6 +82,7 @@ impl RomEnv {
                 i3c1_base,
                 soc_manager,
                 straps,
+                mbox0_helpers,
             }
         }
     }
